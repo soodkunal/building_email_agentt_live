@@ -21,12 +21,15 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 # Using google-genai SDK
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
+from google.genai import types
+
 def get_embedding(text: str) -> list[float]:
     """Get text embedding from Gemini."""
     try:
         response = gemini_client.models.embed_content(
-            model='text-embedding-004',
+            model='gemini-embedding-2',
             contents=text,
+            config=types.EmbedContentConfig(output_dimensionality=768)
         )
         return response.embeddings[0].values
     except Exception as e:

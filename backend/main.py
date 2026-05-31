@@ -9,6 +9,7 @@ from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 import googleapiclient.discovery
 from google import genai
+from google.genai import types
 
 load_dotenv()
 
@@ -135,18 +136,14 @@ def generate_draft(payload: EmailDraftRequest):
         raise HTTPException(status_code=500, detail="Supabase not configured.")
         
     try:
-        # Check if draft already exists
-        response = supabase.table("drafted_emails").select("*").eq("email_id", payload.id).execute()
-        if response.data:
-            return {"success": True, "draft": response.data[0]}
-
-        # If not, generate embedding for the incoming email body
+        # Generate embedding for the incoming email body
         if not gemini_client:
             raise Exception("Gemini client not initialized. Check GEMINI_API_KEY in .env")
             
         embed_response = gemini_client.models.embed_content(
-            model='text-embedding-004',
+            model='gemini-embedding-2',
             contents=payload.body,
+            config=types.EmbedContentConfig(output_dimensionality=768)
         )
         query_embedding = embed_response.embeddings[0].values
         
@@ -158,6 +155,12 @@ def generate_draft(payload: EmailDraftRequest):
         }).execute()
         
         contexts = match_response.data or []
+
+        # Check if draft already exists
+        response = supabase.table("drafted_emails").select("*").eq("email_id", payload.id).execute()
+        if response.data:
+            return {"success": True, "draft": response.data[0], "contexts": contexts}
+            
         context_str = ""
         for item in contexts:
             context_str += f"- Content: {item.get('content')}\n"
@@ -203,7 +206,7 @@ Draft a polite, professional, and helpful reply to the email.
         insert_response = supabase.table("drafted_emails").insert(draft_data).execute()
         db_draft = insert_response.data[0] if insert_response.data else draft_data
         
-        return {"success": True, "draft": db_draft}
+        return {"success": True, "draft": db_draft, "contexts": contexts}
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
